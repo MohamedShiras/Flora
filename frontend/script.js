@@ -38,6 +38,7 @@ function updateAuthUI(user) {
                 <div class="dropdown-menu" id="userDropdown">
                     <a href="#" onclick="openMyProfile(event)"><i class="fas fa-user"></i> My Profile</a>
                     <a href="#" onclick="openMyOrders(event)"><i class="fas fa-shopping-bag"></i> My Orders</a>
+                    <a href="#" onclick="openMehendiAppointment(event)"><i class="fas fa-paint-brush"></i> Mehendi Appointment</a>
                     <div class="divider"></div>
                     <button onclick="logoutUser()"><i class="fas fa-sign-out-alt"></i> Logout</button>
                 </div>
@@ -207,11 +208,13 @@ function createOrderCardHTML(orderId, order) {
         ${addr.specialInstructions ? `<p><strong>Notes:</strong> ${addr.specialInstructions}</p>` : ''}
     `;
 
+    const displayId = orderId ? orderId.slice(-8).toUpperCase() : 'N/A';
+
     return `
         <div class="order-card status-${status}">
             <div class="order-header">
                 <div class="order-id-date">
-                    <span class="order-id-text">Order #${orderId}</span>
+                    <span class="order-id-text">Order #${displayId}</span>
                     <span class="order-date">${formattedDate}</span>
                 </div>
                 <span class="order-status ${status}">${status}</span>
@@ -417,6 +420,126 @@ document.addEventListener('click', (e) => {
         closeProfileModal();
     }
 });
+
+// ==================== MEHENDI APPOINTMENT ====================
+function openMehendiAppointment(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const dropdown = document.getElementById('userDropdown');
+    if (dropdown) dropdown.classList.remove('active');
+    const modal = document.getElementById('mehendiModal');
+    if (modal) {
+        modal.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+        const success = document.getElementById('mehendiSuccess');
+        const error = document.getElementById('mehendiError');
+        if (success) success.style.display = 'none';
+        if (error) error.style.display = 'none';
+        const form = document.getElementById('mehendiForm');
+        if (form) form.reset();
+    }
+}
+
+function closeMehendiModal() {
+    const modal = document.getElementById('mehendiModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+// Close mehendi modal when clicking outside
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('mehendiModal');
+    if (modal && e.target === modal) {
+        closeMehendiModal();
+    }
+});
+
+// Handle form submit
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('mehendiForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fullname = document.getElementById('mehendiFullname').value.trim();
+        const contact = document.getElementById('mehendiContact').value.trim();
+        const address = document.getElementById('mehendiAddress').value.trim();
+        const date = document.getElementById('mehendiDate').value;
+        const time = document.getElementById('mehendiTime').value;
+        const successEl = document.getElementById('mehendiSuccess');
+        const errorEl = document.getElementById('mehendiError');
+        successEl.style.display = 'none';
+        errorEl.style.display = 'none';
+        if (!fullname || !contact || !address || !date || !time) {
+            errorEl.textContent = 'Please fill all fields.';
+            errorEl.style.display = 'block';
+            return;
+        }
+        try {
+            const user = auth.currentUser;
+            await db.collection('mehendi_appointment').add({
+                fullname,
+                contact,
+                address,
+                date,
+                time,
+                userId: user ? user.uid : null,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            // show visual confirmation popup with details
+            form.reset();
+            closeMehendiModal();
+            showMehendiConfirm({ fullname, contact, address, date, time });
+        } catch (err) {
+            console.error('Mehendi submit error:', err);
+            errorEl.textContent = 'Error sending request. Try again.';
+            errorEl.style.display = 'block';
+        }
+    });
+});
+
+function showMehendiConfirm(details) {
+    const modal = document.getElementById('mehendiConfirmModal');
+    const textEl = document.getElementById('mehendiConfirmText');
+    const detailsEl = document.getElementById('mehendiConfirmDetails');
+    if (!modal) return;
+    // build details summary
+    if (details) {
+        const { fullname, contact, address, date, time } = details;
+        detailsEl.innerHTML = `<p style="margin:0"><strong>Name:</strong> ${escapeHtml(fullname)}</p>
+            <p style="margin:0"><strong>Phone:</strong> ${escapeHtml(contact)}</p>
+            <p style="margin:0"><strong>Date:</strong> ${escapeHtml(date)}</p>
+            <p style="margin:0"><strong>Time:</strong> ${escapeHtml(time)}</p>
+            <p style="margin:0"><strong>Address:</strong> ${escapeHtml(address)}</p>`;
+        detailsEl.style.display = 'block';
+        textEl.textContent = 'We received your request. We will contact you to confirm the appointment.';
+    } else {
+        detailsEl.style.display = 'none';
+        textEl.textContent = 'We received your request. We will contact you to confirm the appointment.';
+    }
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMehendiConfirm() {
+    const modal = document.getElementById('mehendiConfirmModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+// small helper to avoid injection in inserted text
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 // ==================== URL CONVERSION ====================
 // Convert Google Drive links to direct image URLs
@@ -1002,7 +1125,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Show success step
                 document.getElementById('addressStep').style.display = 'none';
                 document.getElementById('successStep').style.display = 'block';
-                document.getElementById('orderId').textContent = orderId;
+                document.getElementById('orderId').textContent = '#' + (orderId ? orderId.slice(-8).toUpperCase() : orderId);
 
                 // Clear cart
                 cart = [];
@@ -1052,7 +1175,7 @@ async function verifyOrderOTP() {
         // Show success
         document.getElementById('otpStep').style.display = 'none';
         document.getElementById('successStep').style.display = 'block';
-        document.getElementById('orderId').textContent = orderId;
+        document.getElementById('orderId').textContent = '#' + (orderId ? orderId.slice(-8).toUpperCase() : orderId);
 
         // Clear cart
         cart = [];
@@ -1152,10 +1275,12 @@ async function sendOrderConfirmationEmail(orderId, orderData) {
             minute: '2-digit'
         });
 
+        const displayOrderId = orderId ? orderId.slice(-8).toUpperCase() : orderId;
+
         const templateParams = {
             to_email: orderData.userEmail,
             to_name: orderData.userName,
-            order_id: orderId,
+            order_id: displayOrderId,
             order_date: orderDate,
             items_html: itemsHtml,
             item_count: orderData.itemCount,
