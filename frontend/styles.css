@@ -1041,6 +1041,96 @@ body {
     overflow-y: auto;
 }
 
+/* Mehendi Appointment Modal Styles */
+#mehendiModal .modal-content {
+    max-width: 420px;
+    padding: 28px;
+    border-radius: 15px;
+    background: white;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.10);
+    position: relative;
+}
+
+#mehendiModal h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    color: #d4a5a5;
+    margin-bottom: 14px;
+    text-align: center;
+}
+
+#mehendiForm .checkout-form-group {
+    margin-bottom: 14px;
+}
+
+#mehendiForm label {
+    display: block;
+    margin-bottom: 6px;
+    color: #333;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+#mehendiForm input,
+#mehendiForm textarea,
+#mehendiForm select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #eee;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-family: 'Poppins', sans-serif;
+    transition: border-color 0.3s;
+    background: #fafafa;
+}
+
+#mehendiForm input:focus,
+#mehendiForm textarea:focus {
+    outline: none;
+    border-color: #d4a5a5;
+}
+
+#mehendiForm textarea {
+    min-height: 64px;
+}
+
+#mehendiForm .btn-primary {
+    width: 100%;
+    padding: 12px;
+    margin-top: 6px;
+}
+
+#mehendiSuccess {
+    display: none;
+    color: #4CAF50;
+    margin-top: 10px;
+    text-align: center;
+}
+
+#mehendiError {
+    display: none;
+    color: #d35050;
+    margin-top: 10px;
+    text-align: center;
+}
+
+/* Mehendi Confirmation Modal tweaks */
+#mehendiConfirmModal .modal-content {
+    padding: 28px;
+    border-radius: 16px;
+    background: white;
+}
+
+#mehendiConfirmModal .confirm-icon i {
+    font-size: 64px;
+}
+
+#mehendiConfirmModal #mehendiConfirmDetails p {
+    margin: 6px 0;
+    color: #555;
+    font-size: 0.95rem;
+}
+
 .cart-item {
     display: flex;
     justify-content: space-between;
