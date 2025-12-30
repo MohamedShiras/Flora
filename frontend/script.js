@@ -437,6 +437,8 @@ function openMehendiAppointment(event) {
         if (error) error.style.display = 'none';
         const form = document.getElementById('mehendiForm');
         if (form) form.reset();
+        // load current user's appointments into modal
+        setTimeout(() => loadUserMehendiAppointments(), 200);
     }
 }
 
@@ -478,19 +480,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         try {
             const user = auth.currentUser;
-            await db.collection('mehendi_appointment').add({
+            const docRef = await db.collection('mehendi_appointment').add({
                 fullname,
                 contact,
                 address,
                 date,
                 time,
                 userId: user ? user.uid : null,
+                userEmail: user ? user.email : null,
+                // use adminDecision to track request state: pending/accepted/rejected
+                adminDecision: 'pending',
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+
+            // mirror into per-user collection for user's appointment history
+            try {
+                await db.collection('user_appointments').doc(docRef.id).set({
+                    fullname,
+                    contact,
+                    address,
+                    date,
+                    time,
+                    userId: user ? user.uid : null,
+                    userEmail: user ? user.email : null,
+                    adminDecision: 'pending',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (mirrorErr) {
+                console.error('Failed to mirror appointment to user_appointments:', mirrorErr);
+            }
+
             // show visual confirmation popup with details
             form.reset();
             closeMehendiModal();
             showMehendiConfirm({ fullname, contact, address, date, time });
+            // reload user's appointments in modal if it's open later
+            loadUserMehendiAppointments();
         } catch (err) {
             console.error('Mehendi submit error:', err);
             errorEl.textContent = 'Error sending request. Try again.';
@@ -498,6 +523,71 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// Load logged-in user's mehendi appointments into the modal
+async function loadUserMehendiAppointments() {
+    const container = document.getElementById('myMehendiAppointments');
+    if (!container) return;
+
+    const user = auth.currentUser;
+    if (!user) {
+        container.innerHTML = '<p>Please login to see your appointments.</p>';
+        return;
+    }
+
+    container.innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>`;
+
+    try {
+        // Avoid server-side ordering to prevent Firestore composite index errors.
+        // Fetch matching docs then sort client-side by createdAt.
+        const snapshot = await db.collection('user_appointments')
+            .where('userId', '==', user.uid)
+            .get();
+
+        if (snapshot.empty) {
+            container.innerHTML = '<p>No appointments yet.</p>';
+            return;
+        }
+
+        const docs = [];
+        snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+
+        // sort by createdAt (newest first). Handle compat Timestamp shapes.
+        docs.sort((a, b) => {
+            const getTime = (x) => {
+                if (!x || !x.createdAt) return 0;
+                const t = x.createdAt;
+                if (typeof t.toDate === 'function') return t.toDate().getTime();
+                if (t.seconds) return t.seconds * 1000 + (t.nanoseconds ? Math.round(t.nanoseconds / 1e6) : 0);
+                return 0;
+            };
+            return getTime(b) - getTime(a);
+        });
+
+        let html = '<ul class="mehendi-list">';
+        docs.forEach(a => {
+            const status = (a.adminDecision || a.status || 'pending').toString().toLowerCase();
+            html += `
+                <li class="mehendi-item">
+                    <div class="mehendi-left">
+                        <div class="mehendi-name">${escapeHtml(a.fullname || '')}</div>
+                        <div class="mehendi-datetime">${escapeHtml(a.date || '')} ${escapeHtml(a.time || '')}</div>
+                        <div class="mehendi-address">${escapeHtml(a.address || '')}</div>
+                    </div>
+                    <div class="mehendi-right">
+                        <span class="mehendi-status ${escapeHtml(status)}">${escapeHtml(status)}</span>
+                    </div>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+    } catch (err) {
+        console.error('Error loading user appointments:', err);
+        const msg = err && err.message ? err.message : JSON.stringify(err);
+        container.innerHTML = `<p>Error loading appointments: ${escapeHtml(msg)}</p>`;
+    }
+}
 
 function showMehendiConfirm(details) {
     const modal = document.getElementById('mehendiConfirmModal');
