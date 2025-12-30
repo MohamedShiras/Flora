@@ -8,6 +8,8 @@
     <title>Admin Dashboard - HKZ Mart</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- EmailJS SDK -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -300,6 +302,11 @@
             color: #004085;
         }
 
+        .order-status.accepted {
+            background: #cce5ff;
+            color: #004085;
+        }
+
         .order-status.completed {
             background: #d4edda;
             color: #155724;
@@ -536,6 +543,7 @@
                 <a href="admin.html" class="active">Orders</a>
                 <a href="products-admin.html">Products</a>
                 <a href="additem.html">Add Product</a>
+                <a href="admin.html#appointments" onclick="showAppointmentsSection()">Appointments</a>
             </nav>
             <div class="admin-user">
                 <span id="adminName">Admin</span>
@@ -581,12 +589,12 @@
 
         <div class="orders-section">
             <div class="section-header">
-                <h2 class="section-title">Recent Orders</h2>
+                <h2 class="section-title">Product Orders</h2>
                 <div class="filter-tabs">
-                    <button class="filter-tab active" onclick="filterOrders('all')">All</button>
-                    <button class="filter-tab" onclick="filterOrders('pending')">Pending</button>
-                    <button class="filter-tab" onclick="filterOrders('processing')">Processing</button>
-                    <button class="filter-tab" onclick="filterOrders('completed')">Completed</button>
+                    <button class="filter-tab active" onclick="filterOrders('all', this)">All</button>
+                    <button class="filter-tab" onclick="filterOrders('pending', this)">Pending</button>
+                    <button class="filter-tab" onclick="filterOrders('processing', this)">Processing</button>
+                    <button class="filter-tab" onclick="filterOrders('completed', this)">Completed</button>
                 </div>
             </div>
 
@@ -614,6 +622,45 @@
             <div id="noOrders" class="no-orders" style="display: none;">
                 <i class="fas fa-inbox"></i>
                 <p>No orders found</p>
+            </div>
+        </div>
+
+        <!-- Mehendi Appointments Section -->
+        <div class="orders-section" id="appointmentsSection" style="margin-top:30px;">
+            <div class="section-header">
+                <h2 class="section-title">Mehendi Appointments</h2>
+                <div class="filter-tabs">
+                    <button class="filter-tab active" onclick="filterAppointments('all', this)">All</button>
+                    <button class="filter-tab" onclick="filterAppointments('pending', this)">Pending</button>
+                    <button class="filter-tab" onclick="filterAppointments('accepted', this)">Accepted</button>
+                    <button class="filter-tab" onclick="filterAppointments('cancelled', this)">Cancelled</button>
+                    <button class="filter-tab" onclick="filterAppointments('completed', this)">Completed</button>
+                </div>
+            </div>
+
+            <div id="mehendiLoading" class="loading">
+                <i class="fas fa-spinner"></i>
+                <p>Loading appointments...</p>
+            </div>
+
+            <table class="orders-table" id="mehendiTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Contact</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Address</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="mehendiBody"></tbody>
+            </table>
+
+            <div id="noAppointments" class="no-orders" style="display: none;">
+                <i class="fas fa-inbox"></i>
+                <p>No appointments found</p>
             </div>
         </div>
     </main>
@@ -649,7 +696,15 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
 
+        // Initialize EmailJS (same user ID used in frontend script)
+        try {
+            emailjs.init('P8m8m9AWH-GOz_BYL');
+        } catch (e) {
+            console.warn('EmailJS init failed or already initialized', e);
+        }
+
         let allOrders = [];
+        let adminDisplayName = '';
         let currentFilter = 'all';
 
         // Check authentication and admin status
@@ -673,11 +728,13 @@
 
             if (!adminSnapshot.empty) {
                 const adminData = adminSnapshot.docs[0].data();
-                document.getElementById('adminName').textContent = adminData.name || 'Admin';
+                adminDisplayName = adminData.name || user.email;
+                document.getElementById('adminName').textContent = adminDisplayName || 'Admin';
             }
 
-            // Load orders
+            // Load orders and appointments
             loadOrders();
+            loadMehendiAppointments();
         });
 
         async function checkIfAdmin(email) {
@@ -791,14 +848,14 @@
             }).join('');
         }
 
-        function filterOrders(status) {
+        function filterOrders(status, el) {
             currentFilter = status;
 
             // Update active tab
             document.querySelectorAll('.filter-tab').forEach(tab => {
                 tab.classList.remove('active');
             });
-            event.target.classList.add('active');
+            if (el && el.classList) el.classList.add('active');
 
             // Filter orders
             const filtered = status === 'all'
@@ -951,6 +1008,357 @@
                 closeOrderModal();
             }
         });
+
+        // ==================== MEHENDI APPOINTMENTS FOR ADMIN ====================
+        let allAppointments = [];
+        let currentAppointmentFilter = 'all';
+
+        // small helper to avoid injection when inserting text
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        async function loadMehendiAppointments() {
+            try {
+                // Fetch both user_appointments and accepted_appointments and merge
+                const userSnap = await db.collection('user_appointments').get();
+                const accSnap = await db.collection('accepted_appointments').get();
+
+                allAppointments = [];
+                userSnap.forEach(doc => allAppointments.push({ id: doc.id, source: 'user', ...doc.data() }));
+                accSnap.forEach(doc => allAppointments.push({ id: doc.id, source: 'accepted', ...doc.data() }));
+
+                // sort by available timestamp (createdAt or acceptedAt)
+                const getTime = (x) => {
+                    if (!x) return 0;
+                    const t = x.createdAt || x.acceptedAt || x.updatedAt;
+                    if (!t) return 0;
+                    if (typeof t.toDate === 'function') return t.toDate().getTime();
+                    if (t.seconds) return t.seconds * 1000 + (t.nanoseconds ? Math.round(t.nanoseconds / 1e6) : 0);
+                    return 0;
+                };
+
+                allAppointments.sort((a, b) => getTime(b) - getTime(a));
+
+                displayMehendiAppointments(allAppointments, currentAppointmentFilter);
+            } catch (error) {
+                console.error('Error loading appointments:', error);
+                const el = document.getElementById('mehendiLoading');
+                if (el) el.innerHTML = `<p>Error loading appointments: ${error.message || error}</p>`;
+            }
+        }
+
+        // We'll use `user_appointments` to store and manage all appointments (pending/accepted/rejected)
+        // The admin UI will load pending and accepted entries from `user_appointments`.
+
+        function displayMehendiAppointments(list, filter = 'pending') {
+            const loading = document.getElementById('mehendiLoading');
+            const table = document.getElementById('mehendiTable');
+            const noApps = document.getElementById('noAppointments');
+            const tbody = document.getElementById('mehendiBody');
+
+            loading.style.display = 'none';
+            // derive lists
+            const items = (list || []);
+            const pendingList = items.filter(app => {
+                const decision = (app.adminDecision || app.status || '').toString().toLowerCase();
+                return decision !== 'accepted' && decision !== 'confirmed' && decision !== 'completed' && decision !== 'cancelled';
+            });
+            const completedList = items.filter(app => {
+                const decision = (app.adminDecision || app.status || '').toString().toLowerCase();
+                return decision === 'completed' || decision === 'done';
+            });
+            const acceptedList = items.filter(app => {
+                const decision = (app.adminDecision || app.status || '').toString().toLowerCase();
+                return decision === 'accepted' || app.source === 'accepted';
+            });
+            const cancelledList = items.filter(app => {
+                const decision = (app.adminDecision || app.status || '').toString().toLowerCase();
+                return decision === 'cancelled' || decision === 'canceled';
+            });
+            const allList = items.slice();
+
+            let renderList = [];
+            if (filter === 'pending') renderList = pendingList;
+            else if (filter === 'completed') renderList = completedList;
+            else if (filter === 'cancelled') renderList = cancelledList;
+            else if (filter === 'accepted') renderList = acceptedList;
+            else renderList = allList; // 'all' or unknown
+
+            if (renderList.length === 0) {
+                table.style.display = 'none';
+                noApps.style.display = 'block';
+                return;
+            }
+
+            table.style.display = 'table';
+            noApps.style.display = 'none';
+
+            tbody.innerHTML = renderList.map(app => {
+                const date = app.date || 'N/A';
+                const time = app.time || 'N/A';
+                const addr = (app.address || '').replace(/\n/g, ' ');
+                const status = app.adminDecision || app.status || 'pending';
+                // show a 'Mark Completed' action specifically when viewing accepted filter
+                const extraCompleteBtn = (filter === 'accepted' && status !== 'completed') ? `
+                                <button class="action-btn complete" onclick="completeAcceptedAppointment('${app.id}')" title="Mark Completed">
+                                    <i class="fas fa-check-double"></i>
+                                </button>
+                                ` : '';
+
+                return `
+                    <tr>
+                        <td>${escapeHtml(app.fullname || 'N/A')}</td>
+                        <td>${escapeHtml(app.contact || '')}</td>
+                        <td><span class="order-status ${status}">${status}</span></td>
+                        <td>${escapeHtml(date)}</td>
+                        <td>${escapeHtml(time)}</td>
+                        <td>${escapeHtml(addr)}</td>
+                        <td>
+                            <div class="order-actions">
+                                ${status !== 'accepted' && status !== 'completed' && status !== 'cancelled' ? `
+                                <button class="action-btn complete" onclick="updateAppointmentStatus('${app.id}', 'confirmed')" title="Confirm Appointment">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                ` : ''}
+                                ${status !== 'cancelled' && status !== 'completed' ? `
+                                <button class="action-btn cancel" onclick="updateAppointmentStatus('${app.id}', 'cancelled')" title="Cancel Appointment">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                                ` : ''}
+                                ${extraCompleteBtn}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function viewAppointment(appId) {
+            const app = allAppointments.find(a => a.id === appId);
+            if (!app) return;
+
+            // reuse order modal for simplicity
+            const modal = document.getElementById('orderModal');
+            const content = document.getElementById('orderDetailContent');
+
+            const created = app.createdAt?.toDate ? app.createdAt.toDate().toLocaleString() : 'N/A';
+
+            content.innerHTML = `
+                <div class="order-detail-section">
+                    <h4>Appointment Details</h4>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>Name</label>
+                            <span>${escapeHtml(app.fullname || 'N/A')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Contact</label>
+                            <span>${escapeHtml(app.contact || 'N/A')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Date</label>
+                            <span>${escapeHtml(app.date || 'N/A')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Time</label>
+                            <span>${escapeHtml(app.time || 'N/A')}</span>
+                        </div>
+                        <div class="detail-item" style="grid-column: span 2;">
+                            <label>Address</label>
+                            <span>${escapeHtml(app.address || '')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>User ID</label>
+                            <span>${app.userId ? app.userId : 'Guest'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Requested At</label>
+                            <span>${created}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            modal.classList.add('active');
+        }
+
+        function filterAppointments(status, el) {
+            // Update active tab for appointments
+            document.querySelectorAll('#appointmentsSection .filter-tab').forEach(tab => tab.classList.remove('active'));
+            if (el && el.classList) el.classList.add('active');
+
+            currentAppointmentFilter = status;
+
+            // keep the appointmentsSection (which contains the filter tabs) visible
+            const mehendiTable = document.getElementById('mehendiTable');
+            const noApps = document.getElementById('noAppointments');
+
+            if (status === 'all') {
+                if (mehendiTable) mehendiTable.style.display = 'table';
+                if (noApps) noApps.style.display = 'none';
+                displayMehendiAppointments(allAppointments, 'all');
+            } else if (status === 'pending') {
+                if (mehendiTable) mehendiTable.style.display = 'table';
+                displayMehendiAppointments(allAppointments, 'pending');
+            } else if (status === 'accepted') {
+                if (mehendiTable) mehendiTable.style.display = 'table';
+                displayMehendiAppointments(allAppointments, 'accepted');
+            } else if (status === 'completed') {
+                if (mehendiTable) mehendiTable.style.display = 'table';
+                displayMehendiAppointments(allAppointments, 'completed');
+            } else {
+                displayMehendiAppointments(allAppointments, status);
+            }
+        }
+
+        function showAppointmentsSection() {
+            // scroll to section for quick access
+            const el = document.getElementById('appointmentsSection');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // accepted_appointments are merged into the main list inside loadMehendiAppointments
+
+        async function updateAppointmentStatus(appId, newStatus) {
+            // find appointment data from cache
+            let app = allAppointments.find(a => a.id === appId);
+            if (!app) {
+                // fallback: fetch single doc
+                try {
+                    const doc = await db.collection('mehendi_appointment').doc(appId).get();
+                    if (doc.exists) app = { id: doc.id, ...doc.data() };
+                } catch (e) {
+                    console.error('Failed to fetch appointment doc:', e);
+                }
+            }
+
+            const actionLabel = newStatus === 'cancelled' ? 'cancel' : 'confirm';
+            const confirmMsg = app && app.fullname
+                ? `Are you sure you want to ${actionLabel} the appointment for ${app.fullname} on ${app.date} at ${app.time}?`
+                : `Are you sure you want to ${actionLabel} this appointment?`;
+
+            if (!confirm(confirmMsg)) return; // admin cancelled action
+
+            // map to adminDecision values requested (accepted/cancelled)
+            const adminDecision = newStatus === 'cancelled' ? 'cancelled' : 'accepted';
+
+            try {
+                await db.collection('mehendi_appointment').doc(appId).update({
+                    status: newStatus,
+                    adminDecision: adminDecision,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                // try to send notification via EmailJS (service and template)
+                try {
+                    const templateParams = {
+                        fullname: app?.fullname || '',
+                        contact: app?.contact || '',
+                        date: app?.date || '',
+                        time: app?.time || '',
+                        address: app?.address || '',
+                        status: adminDecision,
+                        // include admin name for template display
+                        admin_name: adminDisplayName || auth.currentUser?.displayName || '',
+                        // keep admin email as fallback if needed
+                        admin_email: auth.currentUser?.email || '',
+                        // send email variable expected by your template ("To Email" uses {{email}} in UI)
+                        email: app?.userEmail || app?.email || '',
+                        // also include user_email for compatibility with other templates
+                        user_email: app?.userEmail || app?.email || ''
+                    };
+
+                    // Ensure we have a recipient email before sending
+                    const recipient = templateParams.email || templateParams.user_email;
+                    console.log('EmailJS params:', templateParams);
+                    if (!recipient) {
+                        console.warn('No recipient email for appointment; skipping EmailJS send');
+                    } else {
+                        try {
+                            const res = await emailjs.send('service_6edy7kd', 'template_jxlpbls', templateParams);
+                            console.log('Appointment notification sent via EmailJS, response:', res);
+                            alert('Appointment updated and notification sent to ' + recipient);
+                        } catch (emailErr) {
+                            console.error('Error sending appointment email via EmailJS:', emailErr);
+                            alert('Appointment updated but failed to send email: ' + (emailErr.message || emailErr));
+                        }
+                    }
+                } catch (emailErr) {
+                    console.error('Error sending appointment email via EmailJS:', emailErr);
+                }
+
+                // update the user_appointments doc instead (single source-of-truth)
+                try {
+                    await db.collection('user_appointments').doc(appId).update({
+                        adminDecision: adminDecision,
+                        handledByName: adminDisplayName || auth.currentUser?.displayName || '',
+                        handledByEmail: auth.currentUser?.email || '',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (userUpdErr) {
+                    console.error('Error updating user_appointments doc:', userUpdErr);
+                }
+
+                // reload pending list
+                loadMehendiAppointments();
+            } catch (error) {
+                console.error('Error updating appointment status:', error);
+                // show more details to the admin to help debugging
+                const msg = error && error.message ? error.message : JSON.stringify(error);
+                alert('Failed to update appointment status: ' + msg);
+            }
+        }
+
+        // Mark an accepted appointment as completed (called from Accepted filter action)
+        async function completeAcceptedAppointment(appId) {
+            if (!confirm('Mark this appointment as completed?')) return;
+            try {
+                // attempt to update accepted_appointments (if this doc exists there)
+                try {
+                    await db.collection('accepted_appointments').doc(appId).update({
+                        status: 'completed',
+                        adminDecision: 'completed',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.warn('accepted_appointments update skipped or not found:', e.message || e);
+                }
+
+                // update user_appointments (single source) if present
+                try {
+                    await db.collection('user_appointments').doc(appId).update({
+                        adminDecision: 'completed',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.warn('user_appointments update skipped or not found:', e.message || e);
+                }
+
+                // update original mehendi_appointment if exists
+                try {
+                    await db.collection('mehendi_appointment').doc(appId).update({
+                        status: 'completed',
+                        adminDecision: 'completed',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.warn('mehendi_appointment update skipped or not found:', e.message || e);
+                }
+
+                alert('Appointment marked completed.');
+                loadMehendiAppointments();
+            } catch (err) {
+                console.error('Failed to mark appointment completed:', err);
+                alert('Failed to mark completed: ' + (err.message || err));
+            }
+        }
     </script>
 </body>
 

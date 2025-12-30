@@ -1003,6 +1003,9 @@ body {
     border-radius: 15px;
     width: 90%;
     max-width: 500px;
+    /* make modal content scrollable on small screens */
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
     position: relative;
     animation: slideIn 0.3s ease;
 }
@@ -1045,12 +1048,15 @@ body {
 
 /* Mehendi Appointment Modal Styles */
 #mehendiModal .modal-content {
-    max-width: 420px;
-    padding: 28px;
-    border-radius: 15px;
+    max-width: 360px;
+    padding: 18px;
+    border-radius: 12px;
     background: white;
     box-shadow: 0 5px 25px rgba(0, 0, 0, 0.10);
     position: relative;
+    /* ensure internal scrolling when content exceeds viewport */
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
 }
 
 #mehendiModal h2 {
@@ -1121,6 +1127,102 @@ body {
     padding: 28px;
     border-radius: 16px;
     background: white;
+}
+
+/* My Appointments list styling */
+.mehendi-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mehendi-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #fbf8f8 100%);
+    box-shadow: 0 6px 16px rgba(212, 165, 165, 0.06);
+    border: 1px solid #f3eaea;
+}
+
+.mehendi-left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 70%;
+}
+
+.mehendi-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.mehendi-datetime {
+    font-size: 12px;
+    color: #777;
+}
+
+.mehendi-address {
+    font-size: 13px;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mehendi-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mehendi-status {
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: capitalize;
+    font-size: 12px;
+}
+
+.mehendi-status.pending {
+    background: #fff3f3;
+    color: #d4a5a5;
+}
+
+.mehendi-status.accepted {
+    background: #e8f7ee;
+    color: #178a3b;
+}
+
+.mehendi-status.completed {
+    background: #e6f7ff;
+    color: #0b6fb7;
+}
+
+.mehendi-status.cancelled {
+    background: #fff0f0;
+    color: #b71c1c;
+}
+
+/* Small screens adjustments */
+@media (max-width: 480px) {
+    .mehendi-item {
+        padding: 10px;
+    }
+
+    .mehendi-left {
+        max-width: 60%;
+    }
+
+    .mehendi-address {
+        white-space: normal;
+    }
 }
 
 #mehendiConfirmModal .confirm-icon i {
