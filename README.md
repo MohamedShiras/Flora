@@ -101,18 +101,6 @@ This project follows a simple design approach:
 
 ---
 
-## 📸 Preview
-
-<p align="center">
-  <i>Replace with your screenshots or GIFs</i>
-</p>
-
-<p align="center">
-  <img src="https://via.placeholder.com/800x400?text=Flora+Preview" />
-</p>
-
----
-
 ## 📈 Roadmap
 
 * [ ] Add advanced animations (GSAP / CSS transitions)
@@ -157,9 +145,3 @@ If you like this project, consider giving it a ⭐ on GitHub — it helps a lot!
 This project is licensed under the **MIT License**.
 
 ---
-
-If you want next level upgrade, I can also:
-
-* Add a **hero banner image (like open-source startups)**
-* Make it **animated README (GIF-based walkthrough)**
-* Or convert your GitHub profile into a **premium developer portfolio style page**
