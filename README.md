@@ -1,6 +1,6 @@
 ---
 
-# 🌸 Flora
+# 🍂 Flora
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge"/>
